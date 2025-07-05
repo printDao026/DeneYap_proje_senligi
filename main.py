@@ -1,23 +1,22 @@
-import serial
 import threading
 import tkinter as tk
 from tkinter import ttk
 import time
 import winsound
 from tkinter import messagebox
-import requests
+import socket
 from gtts import gTTS
 import playsound
 import os
+import requests
 
 
-
-ser = serial.Serial("COM6", 9600, timeout=1)
 time.sleep(2)
 
 son_veri = ""
 tehlike_modu=0
 seriport_durdur=0
+
 def sesli_soyle(metin, dil="tr"):
     try:
         tts = gTTS(text=metin, lang=dil)
@@ -29,6 +28,7 @@ def sesli_soyle(metin, dil="tr"):
 
 def satir_baslarini_ekle(metin, karakter_sayisi=50):
     return '\n'.join(metin[i:i+karakter_sayisi] for i in range(0, len(metin), karakter_sayisi))
+
 def ollama_cevap():
     giris = (
     "Sen bir Afet Botusun. Türkçe, kısa ve öz cevap ver. "
@@ -55,9 +55,6 @@ def ollama_cevap():
         parca_duzenli = satir_baslarini_ekle(parca)
 
         yapay_zeka_cevap.config(text=parca_duzenli)
-        print(parca_duzenli)
-
-        print(parca)
 
     except Exception as e:
         print(f"Hata oluştu: {e}")
@@ -86,8 +83,6 @@ def uyari_deprem_var_mi():
     except:
         label_analiz=tk.Label(yeni_pencere, text="analizde hata verildi", font=("Arial", 14), padx=20, pady=20).pack()
 
-
-
 def zil():
     try:
         winsound.Beep(2000,1000)
@@ -99,52 +94,55 @@ def uyari():
 def veri_oku():
     global tehlike_modu
     global son_veri
+    global s
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.connect(("192.168.1.116", 1234))
+
     while True:
         try:
-            if ser.in_waiting:
-                veri = ser.readline().decode().strip()
+            data = s.recv(1024)
+
+            if data:
+                veri = data.decode().strip()
                 if veri != son_veri:
                     son_veri = veri
-                    print(son_veri)
                     if "Yangin:" in son_veri:
-                        print("merhaba")
-                        print(son_veri)
                         yangin.config(text=son_veri)
-                    if seriport_durdur==1:
+                    if "deprem veri:" in son_veri:
+                        yangin.config(text=son_veri)
+                    if seriport_durdur == 1:
                         seriport_button.config(text="🟢 Başlat")
                         seriport.config(state="disabled")
-                    elif seriport_durdur==0:
+                    elif seriport_durdur == 0:
                         seriport_button.config(text="🔴 Seri Portu \nDurdur")
                         seriport.config(state="normal")
                         seriport.insert(tk.END, f"{son_veri}\n")
                         seriport.see(tk.END)
                         seriport.config(state="disabled")
+
                 if son_veri == "DEPREM":
                     threading.Thread(target=zil, daemon=True).start()
                     sesli_soyle("BU BİR DEPREM uyarısıdır")
                     time.sleep(1)
-                    uyari()
-                    time.sleep(1) 
                     threading.Thread(target=uyari_deprem_var_mi, daemon=True).start()
-                    
-   
-                    
+                    uyari()
 
         except Exception as e:
-            print("Hata var",e)
+            print("Hata var", e)
         time.sleep(0.1)
 
 
 
+
 window = tk.Tk()
-window.title("")
+window.title("Afet Korunma Sistemi")
 
 window.geometry("1080x720")
 
 def led_ac():
-    ser.write(bytes([1]))
+    s.sendall(b"YAK\n")
 def led_kapa():
-    ser.write(bytes([0]))
+    s.sendall(b"SONDUR\n")
 
 tabs=ttk.Notebook(window,width=720,height=540)
 tabs.place(x=170,y=50)
@@ -204,8 +202,7 @@ seriport_button.grid(row=2,column=0)
 
 yangin=tk.Label(tab3,text="Yangin: ",font="Times 25")
 yangin.grid(row=1,column=0)
-
-
+deprem=tk.Label(tab3,text="Deprem: ",font="Times 25")
+deprem.grid(row=2,column=0)
 threading.Thread(target=veri_oku,daemon=True).start()
 window.mainloop()
-ser.close()
